@@ -101,6 +101,12 @@ impl fmt::Debug for WindowBuilder {
     }
 }
 
+#[derive(Default)]
+pub struct UniqueWindowBuilder {
+    pub shared: WindowBuilder,
+    pub window: UniqueWindowAttributes,
+}
+
 /// Attributes to use when creating a window.
 #[derive(Debug, Clone)]
 pub struct WindowAttributes {
@@ -211,6 +217,11 @@ impl Default for WindowAttributes {
             window_icon: None,
         }
     }
+}
+
+#[derive(Default)]
+pub struct UniqueWindowAttributes {
+    pub accesskit_factory: Option<Box<dyn FnOnce() -> accesskit_schema::TreeUpdate + Send>>,
 }
 
 impl WindowBuilder {
@@ -359,6 +370,13 @@ impl WindowBuilder {
         self
     }
 
+    pub fn with_accesskit_factory(
+        self,
+        accesskit_factory: Box<dyn FnOnce() -> accesskit_schema::TreeUpdate + Send>,
+    ) -> UniqueWindowBuilder {
+        self.unique().with_accesskit_factory(accesskit_factory)
+    }
+
     /// Builds the window.
     ///
     /// Possible causes of error include denied permission, incompatible system, and lack of memory.
@@ -371,12 +389,41 @@ impl WindowBuilder {
         self,
         window_target: &EventLoopWindowTarget<T>,
     ) -> Result<Window, OsError> {
-        platform_impl::Window::new(&window_target.p, self.window, self.platform_specific).map(
-            |window| {
-                window.request_redraw();
-                Window { window }
-            },
+        self.unique().build(window_target)
+    }
+
+    fn unique(self) -> UniqueWindowBuilder {
+        UniqueWindowBuilder {
+            shared: self,
+            ..Default::default()
+        }
+    }
+}
+
+impl UniqueWindowBuilder {
+    #[inline]
+    pub fn with_accesskit_factory(
+        mut self,
+        accesskit_factory: Box<dyn FnOnce() -> accesskit_schema::TreeUpdate + Send>,
+    ) -> Self {
+        self.window.accesskit_factory = Some(accesskit_factory);
+        self
+    }
+
+    pub fn build<T: 'static>(
+        self,
+        window_target: &EventLoopWindowTarget<T>,
+    ) -> Result<Window, OsError> {
+        platform_impl::Window::new(
+            &window_target.p,
+            self.shared.window,
+            self.window,
+            self.shared.platform_specific,
         )
+        .map(|window| {
+            window.request_redraw();
+            Window { window }
+        })
     }
 }
 
@@ -881,6 +928,20 @@ impl Window {
     #[inline]
     pub fn primary_monitor(&self) -> Option<MonitorHandle> {
         self.window.primary_monitor()
+    }
+}
+
+/// Accessibility functions.
+impl Window {
+    pub fn update_accesskit(&self, update: accesskit_schema::TreeUpdate) {
+        self.window.update_accesskit(update)
+    }
+
+    pub fn update_accesskit_if_active(
+        &self,
+        updater: impl FnOnce() -> accesskit_schema::TreeUpdate,
+    ) {
+        self.window.update_accesskit_if_active(updater)
     }
 }
 

@@ -35,6 +35,9 @@ pub struct WindowState {
     pub preferred_theme: Option<Theme>,
     pub high_surrogate: Option<u16>,
     pub window_flags: WindowFlags,
+    pub accesskit: Option<
+        accesskit_windows::Manager<Box<dyn FnOnce() -> accesskit_schema::TreeUpdate + Send>>,
+    >,
 }
 
 #[derive(Clone)]
@@ -99,6 +102,9 @@ impl WindowState {
         scale_factor: f64,
         current_theme: Theme,
         preferred_theme: Option<Theme>,
+        accesskit: Option<
+            accesskit_windows::Manager<Box<dyn FnOnce() -> accesskit_schema::TreeUpdate + Send>>,
+        >,
     ) -> WindowState {
         WindowState {
             mouse: MouseProperties {
@@ -123,6 +129,7 @@ impl WindowState {
             preferred_theme,
             high_surrogate: None,
             window_flags: WindowFlags::empty(),
+            accesskit,
         }
     }
 

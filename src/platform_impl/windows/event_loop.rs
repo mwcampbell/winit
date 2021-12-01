@@ -477,19 +477,16 @@ impl EventLoopThreadExecutor {
     /// `WindowState` then you should call this within the lock of `WindowState`. Otherwise the
     /// events may be sent to the other thread in different order to the one in which you set
     /// `WindowState`, leaving them out of sync.
-    ///
-    /// Note that we use a FnMut instead of a FnOnce because we're too lazy to create an equivalent
-    /// to the unstable FnBox.
-    pub(super) fn execute_in_thread<F>(&self, mut function: F)
+    pub(super) fn execute_in_thread<F>(&self, function: F)
     where
-        F: FnMut() + Send + 'static,
+        F: FnOnce() + Send + 'static,
     {
         unsafe {
             if self.in_event_loop_thread() {
                 function();
             } else {
                 // We double-box because the first box is a fat pointer.
-                let boxed = Box::new(function) as Box<dyn FnMut()>;
+                let boxed = Box::new(function) as Box<dyn FnOnce()>;
                 let boxed2: ThreadExecFn = Box::new(boxed);
 
                 let raw = Box::into_raw(boxed2);
@@ -506,7 +503,7 @@ impl EventLoopThreadExecutor {
     }
 }
 
-type ThreadExecFn = Box<Box<dyn FnMut()>>;
+type ThreadExecFn = Box<Box<dyn FnOnce()>>;
 
 pub struct EventLoopProxy<T: 'static> {
     target_window: HWND,
@@ -547,7 +544,7 @@ lazy_static! {
         }
     };
     // Message sent when we want to execute a closure in the thread.
-    // WPARAM contains a Box<Box<dyn FnMut()>> that must be retrieved with `Box::from_raw`,
+    // WPARAM contains a Box<Box<dyn FnOnce()>> that must be retrieved with `Box::from_raw`,
     // and LPARAM is unused.
     static ref EXEC_MSG_ID: u32 = {
         unsafe {
@@ -2011,6 +2008,27 @@ unsafe fn public_window_callback_inner<T: 'static>(
             winuser::DefWindowProcW(window, msg, wparam, lparam)
         }
 
+        winuser::WM_GETOBJECT => {
+            // Be careful not to process the result while we're holding
+            // the lock on the window state, to avoid deadlock via reentrancy.
+            let result = {
+                let window_state = userdata.window_state.lock();
+                window_state
+                    .accesskit
+                    .as_ref()
+                    .map(|manager| {
+                        let wparam = windows::Win32::Foundation::WPARAM(wparam);
+                        let lparam = windows::Win32::Foundation::LPARAM(lparam);
+                        manager.handle_wm_getobject(wparam, lparam)
+                    })
+                    .flatten()
+            };
+            result.map_or_else(
+                || winuser::DefWindowProcW(window, msg, wparam, lparam),
+                |result| result.into().0,
+            )
+        }
+
         _ => {
             if msg == *DESTROY_MSG_ID {
                 winuser::DestroyWindow(window);
@@ -2222,7 +2240,7 @@ unsafe extern "system" fn thread_event_target_callback<T: 'static>(
             0
         }
         _ if msg == *EXEC_MSG_ID => {
-            let mut function: ThreadExecFn = Box::from_raw(wparam as usize as *mut _);
+            let function: ThreadExecFn = Box::from_raw(wparam as usize as *mut _);
             function();
             0
         }
