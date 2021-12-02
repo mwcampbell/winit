@@ -20,7 +20,7 @@ pub struct AccessKitSource {
     pub id: WindowId,
 }
 
-impl From<AccessKitSource> for accesskit_schema::TreeUpdate {
+impl From<AccessKitSource> for accesskit::TreeUpdate {
     fn from(this: AccessKitSource) -> Self {
         this.factory.initial_tree_for_window(this.id)
     }
@@ -46,7 +46,7 @@ pub struct WindowState {
     pub preferred_theme: Option<Theme>,
     pub high_surrogate: Option<u16>,
     pub window_flags: WindowFlags,
-    pub accesskit: Option<accesskit_windows::Manager<AccessKitSource>>,
+    pub accesskit: Option<accesskit_windows::Adapter<AccessKitSource>>,
 }
 
 #[derive(Clone)]
@@ -141,7 +141,7 @@ impl WindowState {
                 let hwnd = windows::Win32::Foundation::HWND(window as _);
                 let id = WindowId(PlatformWindowId(window));
                 let source = AccessKitSource { factory, id };
-                accesskit_windows::Manager::new(hwnd, source)
+                accesskit_windows::Adapter::new(hwnd, source)
             }),
         }
     }

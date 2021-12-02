@@ -217,7 +217,7 @@ impl Default for WindowAttributes {
 }
 
 pub trait AccessKitFactory: fmt::Debug + Send + Sync {
-    fn initial_tree_for_window(&self, id: WindowId) -> accesskit_schema::TreeUpdate;
+    fn initial_tree_for_window(&self, id: WindowId) -> accesskit::TreeUpdate;
 }
 
 impl WindowBuilder {
@@ -901,14 +901,11 @@ impl Window {
 
 /// Accessibility functions.
 impl Window {
-    pub fn update_accesskit(&self, update: accesskit_schema::TreeUpdate) {
+    pub fn update_accesskit(&self, update: accesskit::TreeUpdate) {
         self.window.update_accesskit(update)
     }
 
-    pub fn update_accesskit_if_active(
-        &self,
-        updater: impl FnOnce() -> accesskit_schema::TreeUpdate,
-    ) {
+    pub fn update_accesskit_if_active(&self, updater: impl FnOnce() -> accesskit::TreeUpdate) {
         self.window.update_accesskit_if_active(updater)
     }
 }

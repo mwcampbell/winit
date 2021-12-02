@@ -649,7 +649,7 @@ impl Window {
         }
     }
 
-    pub fn update_accesskit(&self, update: accesskit_schema::TreeUpdate) {
+    pub fn update_accesskit(&self, update: accesskit::TreeUpdate) {
         let events = {
             let window_state = self.window_state.lock();
             window_state.accesskit.as_ref().unwrap().update(update)
@@ -659,10 +659,7 @@ impl Window {
         });
     }
 
-    pub fn update_accesskit_if_active(
-        &self,
-        updater: impl FnOnce() -> accesskit_schema::TreeUpdate,
-    ) {
+    pub fn update_accesskit_if_active(&self, updater: impl FnOnce() -> accesskit::TreeUpdate) {
         let events = {
             let window_state = self.window_state.lock();
             window_state

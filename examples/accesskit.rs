@@ -1,4 +1,4 @@
-use accesskit_schema::{Node, NodeId, Role, StringEncoding, Tree, TreeId, TreeUpdate};
+use accesskit::{Node, NodeId, Role, StringEncoding, Tree, TreeId, TreeUpdate};
 use simple_logger::SimpleLogger;
 use std::{
     num::NonZeroU64,

@@ -2016,10 +2016,10 @@ unsafe fn public_window_callback_inner<T: 'static>(
                 window_state
                     .accesskit
                     .as_ref()
-                    .map(|manager| {
+                    .map(|adapter| {
                         let wparam = windows::Win32::Foundation::WPARAM(wparam);
                         let lparam = windows::Win32::Foundation::LPARAM(lparam);
-                        manager.handle_wm_getobject(wparam, lparam)
+                        adapter.handle_wm_getobject(wparam, lparam)
                     })
                     .flatten()
             };
