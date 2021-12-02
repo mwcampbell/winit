@@ -7,7 +7,7 @@ use std::{
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+    window::{AccessKitFactory, Window, WindowBuilder, WindowId},
 };
 
 const WINDOW_TITLE: &str = "Hello world";
@@ -25,6 +25,7 @@ fn make_button(id: NodeId, name: &str) -> Node {
     }
 }
 
+#[derive(Debug)]
 struct State {
     focus: NodeId,
     is_window_focused: bool,
@@ -38,7 +39,23 @@ impl State {
         }))
     }
 
-    fn get_initial_tree(&self) -> TreeUpdate {
+    fn update_focus(&mut self, window: &Window, is_window_focused: bool) {
+        self.is_window_focused = is_window_focused;
+        window.update_accesskit_if_active(|| TreeUpdate {
+            clear: None,
+            nodes: vec![],
+            tree: None,
+            focus: is_window_focused.then(|| self.focus),
+        });
+    }
+}
+
+#[derive(Debug)]
+struct MyAccessKitFactory(Arc<Mutex<State>>);
+
+impl AccessKitFactory for MyAccessKitFactory {
+    fn initial_tree_for_window(&self, _id: WindowId) -> TreeUpdate {
+        let state = self.0.lock().unwrap();
         let root = Node {
             children: Box::new([BUTTON_1_ID, BUTTON_2_ID]),
             name: Some(WINDOW_TITLE.into()),
@@ -54,18 +71,8 @@ impl State {
                 WINDOW_ID,
                 StringEncoding::Utf8,
             )),
-            focus: self.is_window_focused.then(|| self.focus),
+            focus: state.is_window_focused.then(|| state.focus),
         }
-    }
-
-    fn update_focus(&mut self, window: &Window, is_window_focused: bool) {
-        self.is_window_focused = is_window_focused;
-        window.update_accesskit_if_active(|| TreeUpdate {
-            clear: None,
-            nodes: vec![],
-            tree: None,
-            focus: is_window_focused.then(|| self.focus),
-        });
     }
 }
 
@@ -74,13 +81,9 @@ fn main() {
     let event_loop = EventLoop::new();
 
     let state = State::new();
-    let state_for_accesskit_factory = Arc::clone(&state);
     let window = WindowBuilder::new()
         .with_title(WINDOW_TITLE)
-        .with_accesskit_factory(Box::new(move || {
-            let state = state_for_accesskit_factory.lock().unwrap();
-            state.get_initial_tree()
-        }))
+        .with_accesskit_factory(MyAccessKitFactory(Arc::clone(&state)))
         .build(&event_loop)
         .unwrap();
 

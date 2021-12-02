@@ -1,5 +1,5 @@
 //! The `Window` struct and associated types.
-use std::fmt;
+use std::{fmt, sync::Arc};
 
 use crate::{
     dpi::{PhysicalPosition, PhysicalSize, Position, Size},
@@ -101,12 +101,6 @@ impl fmt::Debug for WindowBuilder {
     }
 }
 
-#[derive(Default)]
-pub struct UniqueWindowBuilder {
-    pub shared: WindowBuilder,
-    pub window: UniqueWindowAttributes,
-}
-
 /// Attributes to use when creating a window.
 #[derive(Debug, Clone)]
 pub struct WindowAttributes {
@@ -196,6 +190,8 @@ pub struct WindowAttributes {
     ///
     /// The default is `None`.
     pub window_icon: Option<Icon>,
+
+    pub accesskit_factory: Option<Arc<dyn AccessKitFactory>>,
 }
 
 impl Default for WindowAttributes {
@@ -215,13 +211,13 @@ impl Default for WindowAttributes {
             decorations: true,
             always_on_top: false,
             window_icon: None,
+            accesskit_factory: None,
         }
     }
 }
 
-#[derive(Default)]
-pub struct UniqueWindowAttributes {
-    pub accesskit_factory: Option<Box<dyn FnOnce() -> accesskit_schema::TreeUpdate + Send>>,
+pub trait AccessKitFactory: fmt::Debug + Send + Sync {
+    fn initial_tree_for_window(&self, id: WindowId) -> accesskit_schema::TreeUpdate;
 }
 
 impl WindowBuilder {
@@ -371,10 +367,11 @@ impl WindowBuilder {
     }
 
     pub fn with_accesskit_factory(
-        self,
-        accesskit_factory: Box<dyn FnOnce() -> accesskit_schema::TreeUpdate + Send>,
-    ) -> UniqueWindowBuilder {
-        self.unique().with_accesskit_factory(accesskit_factory)
+        mut self,
+        accesskit_factory: impl AccessKitFactory + 'static,
+    ) -> Self {
+        self.window.accesskit_factory = Some(Arc::new(accesskit_factory));
+        self
     }
 
     /// Builds the window.
@@ -389,41 +386,12 @@ impl WindowBuilder {
         self,
         window_target: &EventLoopWindowTarget<T>,
     ) -> Result<Window, OsError> {
-        self.unique().build(window_target)
-    }
-
-    fn unique(self) -> UniqueWindowBuilder {
-        UniqueWindowBuilder {
-            shared: self,
-            ..Default::default()
-        }
-    }
-}
-
-impl UniqueWindowBuilder {
-    #[inline]
-    pub fn with_accesskit_factory(
-        mut self,
-        accesskit_factory: Box<dyn FnOnce() -> accesskit_schema::TreeUpdate + Send>,
-    ) -> Self {
-        self.window.accesskit_factory = Some(accesskit_factory);
-        self
-    }
-
-    pub fn build<T: 'static>(
-        self,
-        window_target: &EventLoopWindowTarget<T>,
-    ) -> Result<Window, OsError> {
-        platform_impl::Window::new(
-            &window_target.p,
-            self.shared.window,
-            self.window,
-            self.shared.platform_specific,
+        platform_impl::Window::new(&window_target.p, self.window, self.platform_specific).map(
+            |window| {
+                window.request_redraw();
+                Window { window }
+            },
         )
-        .map(|window| {
-            window.request_redraw();
-            Window { window }
-        })
     }
 }
 

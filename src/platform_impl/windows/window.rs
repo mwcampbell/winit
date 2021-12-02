@@ -46,9 +46,7 @@ use crate::{
         window_state::{CursorFlags, SavedWindow, WindowFlags, WindowState},
         Parent, PlatformSpecificWindowBuilderAttributes, WindowId,
     },
-    window::{
-        CursorIcon, Fullscreen, Theme, UniqueWindowAttributes, UserAttentionType, WindowAttributes,
-    },
+    window::{CursorIcon, Fullscreen, Theme, UserAttentionType, WindowAttributes},
 };
 
 /// The Win32 implementation of the main `Window` object.
@@ -67,14 +65,13 @@ impl Window {
     pub fn new<T: 'static>(
         event_loop: &EventLoopWindowTarget<T>,
         w_attr: WindowAttributes,
-        u_attr: UniqueWindowAttributes,
         pl_attr: PlatformSpecificWindowBuilderAttributes,
     ) -> Result<Window, RootOsError> {
         // We dispatch an `init` function because of code style.
         // First person to remove the need for cloning here gets a cookie!
         //
         // done. you owe me -- ossi
-        unsafe { init(w_attr, u_attr, pl_attr, event_loop) }
+        unsafe { init(w_attr, pl_attr, event_loop) }
     }
 
     pub fn set_title(&self, text: &str) {
@@ -707,7 +704,6 @@ pub(super) struct InitData<'a, T: 'static> {
     // inputs
     pub event_loop: &'a EventLoopWindowTarget<T>,
     pub attributes: WindowAttributes,
-    pub u_attribs: UniqueWindowAttributes,
     pub pl_attribs: PlatformSpecificWindowBuilderAttributes,
     pub window_flags: WindowFlags,
     // outputs
@@ -715,7 +711,7 @@ pub(super) struct InitData<'a, T: 'static> {
 }
 
 impl<'a, T: 'static> InitData<'a, T> {
-    unsafe fn create_window(&mut self, window: HWND) -> Window {
+    unsafe fn create_window(&self, window: HWND) -> Window {
         // Register for touch events if applicable
         {
             let digitizer = winuser::GetSystemMetrics(winuser::SM_DIGITIZER) as u32;
@@ -749,17 +745,13 @@ impl<'a, T: 'static> InitData<'a, T> {
         let current_theme = try_theme(window, self.pl_attribs.preferred_theme);
 
         let window_state = {
-            let hwnd = windows::Win32::Foundation::HWND(window as _);
             let window_state = WindowState::new(
+                window,
                 &self.attributes,
                 self.pl_attribs.taskbar_icon.clone(),
                 scale_factor,
                 current_theme,
                 self.pl_attribs.preferred_theme,
-                self.u_attribs
-                    .accesskit_factory
-                    .take()
-                    .map(|factory| accesskit_windows::Manager::new(hwnd, factory)),
             );
             let window_state = Arc::new(Mutex::new(window_state));
             WindowState::set_window_flags(window_state.lock(), window, |f| *f = self.window_flags);
@@ -870,7 +862,6 @@ impl<'a, T: 'static> InitData<'a, T> {
 }
 unsafe fn init<T>(
     attributes: WindowAttributes,
-    u_attribs: UniqueWindowAttributes,
     pl_attribs: PlatformSpecificWindowBuilderAttributes,
     event_loop: &EventLoopWindowTarget<T>,
 ) -> Result<Window, RootOsError>
@@ -917,7 +908,6 @@ where
     let mut initdata = InitData {
         event_loop,
         attributes,
-        u_attribs,
         pl_attribs: pl_attribs.clone(),
         window_flags,
         window: None,

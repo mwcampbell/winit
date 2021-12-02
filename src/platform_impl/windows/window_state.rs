@@ -2,11 +2,11 @@ use crate::{
     dpi::{PhysicalPosition, Size},
     event::ModifiersState,
     icon::Icon,
-    platform_impl::platform::{event_loop, util},
-    window::{CursorIcon, Fullscreen, Theme, WindowAttributes},
+    platform_impl::platform::{event_loop, util, WindowId as PlatformWindowId},
+    window::{AccessKitFactory, CursorIcon, Fullscreen, Theme, WindowAttributes, WindowId},
 };
 use parking_lot::MutexGuard;
-use std::{io, ptr};
+use std::{io, ptr, sync::Arc};
 use winapi::{
     shared::{
         minwindef::DWORD,
@@ -14,6 +14,17 @@ use winapi::{
     },
     um::winuser,
 };
+
+pub struct AccessKitSource {
+    pub factory: Arc<dyn AccessKitFactory>,
+    pub id: WindowId,
+}
+
+impl From<AccessKitSource> for accesskit_schema::TreeUpdate {
+    fn from(this: AccessKitSource) -> Self {
+        this.factory.initial_tree_for_window(this.id)
+    }
+}
 
 /// Contains information about states and the window that the callback is going to use.
 pub struct WindowState {
@@ -35,9 +46,7 @@ pub struct WindowState {
     pub preferred_theme: Option<Theme>,
     pub high_surrogate: Option<u16>,
     pub window_flags: WindowFlags,
-    pub accesskit: Option<
-        accesskit_windows::Manager<Box<dyn FnOnce() -> accesskit_schema::TreeUpdate + Send>>,
-    >,
+    pub accesskit: Option<accesskit_windows::Manager<AccessKitSource>>,
 }
 
 #[derive(Clone)]
@@ -97,14 +106,12 @@ bitflags! {
 
 impl WindowState {
     pub fn new(
+        window: HWND,
         attributes: &WindowAttributes,
         taskbar_icon: Option<Icon>,
         scale_factor: f64,
         current_theme: Theme,
         preferred_theme: Option<Theme>,
-        accesskit: Option<
-            accesskit_windows::Manager<Box<dyn FnOnce() -> accesskit_schema::TreeUpdate + Send>>,
-        >,
     ) -> WindowState {
         WindowState {
             mouse: MouseProperties {
@@ -129,7 +136,13 @@ impl WindowState {
             preferred_theme,
             high_surrogate: None,
             window_flags: WindowFlags::empty(),
-            accesskit,
+
+            accesskit: attributes.accesskit_factory.clone().map(|factory| {
+                let hwnd = windows::Win32::Foundation::HWND(window as _);
+                let id = WindowId(PlatformWindowId(window));
+                let source = AccessKitSource { factory, id };
+                accesskit_windows::Manager::new(hwnd, source)
+            }),
         }
     }
 
