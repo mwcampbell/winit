@@ -220,6 +220,12 @@ pub trait AccessKitFactory: fmt::Debug + Send + Sync {
     fn initial_tree_for_window(&self, id: WindowId) -> accesskit::TreeUpdate;
 }
 
+impl AccessKitFactory for accesskit::TreeUpdate {
+    fn initial_tree_for_window(&self, _id: WindowId) -> Self {
+        self.clone()
+    }
+}
+
 impl WindowBuilder {
     /// Initializes a new `WindowBuilder` with default values.
     #[inline]
