@@ -23,6 +23,7 @@ wayland = ["wayland-client", "wayland-protocols", "sctk"]
 wayland-dlopen = ["sctk/dlopen", "wayland-client/dlopen"]
 
 [dependencies]
+accesskit = "0.1.0"
 instant = { version = "0.1", features = ["wasm-bindgen"] }
 lazy_static = "1"
 log = "0.4"
@@ -30,10 +31,6 @@ serde = { version = "1", optional = true, features = ["serde_derive"] }
 raw-window-handle = "0.3"
 bitflags = "1"
 mint = { version = "0.5.6", optional = true }
-
-[dependencies.accesskit]
-git = "https://github.com/AccessKit/accesskit"
-branch = "egui-work"
 
 [dev-dependencies]
 image = "0.23.12"
@@ -60,11 +57,8 @@ default_features = false
 features = ["display_link"]
 
 [target.'cfg(target_os = "windows")'.dependencies]
+accesskit_windows = "0.1.0"
 parking_lot = "0.11"
-
-[target.'cfg(target_os = "windows")'.dependencies.accesskit_windows]
-git = "https://github.com/AccessKit/accesskit"
-branch = "egui-work"
 
 [target.'cfg(target_os = "windows")'.dependencies.winapi]
 version = "0.3.9"
