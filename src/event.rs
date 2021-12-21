@@ -283,10 +283,14 @@ pub enum WindowEvent<'a> {
     },
 
     /// The cursor has entered the window.
-    CursorEntered { device_id: DeviceId },
+    CursorEntered {
+        device_id: DeviceId,
+    },
 
     /// The cursor has left the window.
-    CursorLeft { device_id: DeviceId },
+    CursorLeft {
+        device_id: DeviceId,
+    },
 
     /// A mouse wheel movement or touchpad scroll occurred.
     MouseWheel {
@@ -352,6 +356,8 @@ pub enum WindowEvent<'a> {
     ///
     /// At the moment this is only supported on Windows.
     ThemeChanged(Theme),
+
+    AccessKitActionRequested(accesskit::ActionRequest),
 }
 
 impl Clone for WindowEvent<'static> {
@@ -438,6 +444,7 @@ impl Clone for WindowEvent<'static> {
             },
             Touch(touch) => Touch(*touch),
             ThemeChanged(theme) => ThemeChanged(*theme),
+            AccessKitActionRequested(request) => AccessKitActionRequested(request.clone()),
             ScaleFactorChanged { .. } => {
                 unreachable!("Static event can't be about scale factor changing")
             }
@@ -524,6 +531,7 @@ impl<'a> WindowEvent<'a> {
             }),
             Touch(touch) => Some(Touch(touch)),
             ThemeChanged(theme) => Some(ThemeChanged(theme)),
+            AccessKitActionRequested(request) => Some(AccessKitActionRequested(request.clone())),
             ScaleFactorChanged { .. } => None,
         }
     }

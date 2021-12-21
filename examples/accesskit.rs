@@ -1,4 +1,6 @@
-use accesskit::{Node, NodeId, Role, StringEncoding, Tree, TreeId, TreeUpdate};
+use accesskit::{
+    Action, ActionRequest, Node, NodeId, Role, StringEncoding, Tree, TreeId, TreeUpdate,
+};
 use simple_logger::SimpleLogger;
 use std::{
     num::NonZeroU64,
@@ -39,13 +41,12 @@ impl State {
         }))
     }
 
-    fn update_focus(&mut self, window: &Window, is_window_focused: bool) {
-        self.is_window_focused = is_window_focused;
+    fn update_focus(&mut self, window: &Window) {
         window.update_accesskit_if_active(|| TreeUpdate {
             clear: None,
             nodes: vec![],
             tree: None,
-            focus: is_window_focused.then(|| self.focus),
+            focus: self.is_window_focused.then(|| self.focus),
         });
     }
 }
@@ -98,7 +99,8 @@ fn main() {
                     }
                     WindowEvent::Focused(is_window_focused) => {
                         let mut state = state.lock().unwrap();
-                        state.update_focus(&window, is_window_focused);
+                        state.is_window_focused = is_window_focused;
+                        state.update_focus(&window);
                     }
                     WindowEvent::KeyboardInput {
                         input:
@@ -117,7 +119,7 @@ fn main() {
                                 } else {
                                     BUTTON_1_ID
                                 };
-                                state.update_focus(&window, true);
+                                state.update_focus(&window);
                             }
                             VirtualKeyCode::Space => {
                                 // This is a pretty hacky way of updating a node.
@@ -139,6 +141,15 @@ fn main() {
                             }
                             _ => (),
                         }
+                    }
+                    WindowEvent::AccessKitActionRequested(ActionRequest {
+                        action: Action::Focus,
+                        target,
+                        data: None,
+                    }) if target == BUTTON_1_ID || target == BUTTON_2_ID => {
+                        let mut state = state.lock().unwrap();
+                        state.focus = target;
+                        state.update_focus(&window);
                     }
                     _ => (),
                 }

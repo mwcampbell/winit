@@ -141,7 +141,13 @@ impl WindowState {
                 let hwnd = windows::Win32::Foundation::HWND(window as _);
                 let id = WindowId(PlatformWindowId(window));
                 let source = AccessKitSource { factory, id };
-                accesskit_windows::Adapter::new(hwnd, source)
+                accesskit_windows::Adapter::new(
+                    hwnd,
+                    source,
+                    Box::new(event_loop::AccessKitActionHandler {
+                        target_window: window,
+                    }),
+                )
             }),
         }
     }

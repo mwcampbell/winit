@@ -503,6 +503,34 @@ impl EventLoopThreadExecutor {
     }
 }
 
+pub(crate) struct AccessKitActionHandler {
+    pub(crate) target_window: HWND,
+}
+
+unsafe impl Send for AccessKitActionHandler {}
+unsafe impl Sync for AccessKitActionHandler {}
+
+impl accesskit::ActionHandler for AccessKitActionHandler {
+    fn do_action(&self, request: accesskit::ActionRequest) {
+        // The request is enqueued and handled asynchronously even if we're
+        // already on the event loop thread, because it's a good idea to handle
+        // an AccessKit request in the same way as a normal input event,
+        // and here it's very convenient to do so.
+        unsafe {
+            let boxed = Box::new(request);
+            let raw = Box::into_raw(boxed);
+
+            let res = winuser::PostMessageW(
+                self.target_window,
+                *ACCESSKIT_ACTION_MSG_ID,
+                raw as *mut () as usize as WPARAM,
+                0,
+            );
+            assert!(res != 0, "PostMessage failed ; is the messages queue full?");
+        }
+    }
+}
+
 type ThreadExecFn = Box<Box<dyn FnOnce()>>;
 
 pub struct EventLoopProxy<T: 'static> {
@@ -549,6 +577,14 @@ lazy_static! {
     static ref EXEC_MSG_ID: u32 = {
         unsafe {
             winuser::RegisterWindowMessageA("Winit::ExecMsg\0".as_ptr() as *const i8)
+        }
+    };
+    // Message sent when we want to enqueue an AccessKit action request.
+    // WPARAM contains a Box<accesskit::ActionRequest> that must be retrieved with `Box::from_raw`,
+    // and LPARAM is unused.
+    static ref ACCESSKIT_ACTION_MSG_ID: u32 = {
+        unsafe {
+            winuser::RegisterWindowMessageA("Winit::AccessKitActionMsg\0".as_ptr() as *const i8)
         }
     };
     static ref PROCESS_NEW_EVENTS_MSG_ID: u32 = {
@@ -2037,6 +2073,14 @@ unsafe fn public_window_callback_inner<T: 'static>(
                 let mut window_state = userdata.window_state.lock();
                 window_state.set_window_flags_in_place(|f| {
                     f.set(WindowFlags::MARKER_RETAIN_STATE_ON_SIZE, wparam != 0)
+                });
+                0
+            } else if msg == *ACCESSKIT_ACTION_MSG_ID {
+                let request: Box<accesskit::ActionRequest> =
+                    Box::from_raw(wparam as usize as *mut _);
+                userdata.send_event(Event::WindowEvent {
+                    window_id: RootWindowId(WindowId(window)),
+                    event: WindowEvent::AccessKitActionRequested(*request),
                 });
                 0
             } else {
