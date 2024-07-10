@@ -10,6 +10,7 @@ use android_activity::input::{InputEvent, KeyAction, Keycode, MotionAction};
 use android_activity::{
     AndroidApp, AndroidAppWaker, ConfigurationRef, InputStatus, MainEvent, Rect,
 };
+use jni::{objects::JObject, JavaVM};
 use tracing::{debug, trace, warn};
 
 use crate::cursor::Cursor;
@@ -180,6 +181,7 @@ impl<T: 'static> EventLoop<T> {
                         &redraw_flag,
                         android_app.create_waker(),
                     ),
+                    show_keyboard_on_resume: Arc::new(AtomicBool::new(false)),
                 },
                 _marker: PhantomData,
             },
@@ -272,6 +274,10 @@ impl<T: 'static> EventLoop<T> {
                 MainEvent::Resume { .. } => {
                     debug!("App Resumed - is running");
                     self.running = true;
+                    show_hide_keyboard(
+                        self.window_target.p.app.clone(),
+                        self.window_target.p.show_keyboard_on_resume.load(Ordering::SeqCst),
+                    );
                 },
                 MainEvent::SaveState { .. } => {
                     // XXX: how to forward this state to applications?
@@ -650,6 +656,7 @@ pub struct ActiveEventLoop {
     control_flow: Cell<ControlFlow>,
     exit: Cell<bool>,
     redraw_requester: RedrawRequester,
+    show_keyboard_on_resume: Arc<AtomicBool>,
 }
 
 impl ActiveEventLoop {
@@ -767,9 +774,32 @@ impl DeviceId {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct PlatformSpecificWindowAttributes;
 
+fn show_hide_keyboard_fallible(app: AndroidApp, show: bool) -> Result<(), jni::errors::Error> {
+    // After Android R, it is no longer possible to show the soft keyboard
+    // with `showSoftInput` alone.
+    // Here we use `WindowInsetsController`, which is the other way.
+    let vm = unsafe { JavaVM::from_raw(app.vm_as_ptr() as _)? };
+    let activity = unsafe { JObject::from_raw(app.activity_as_ptr() as _) };
+    let mut env = vm.attach_current_thread()?;
+    let window = env.call_method(&activity, "getWindow", "()Landroid/view/Window;", &[])?.l()?;
+    let wic = env
+        .call_method(window, "getInsetsController", "()Landroid/view/WindowInsetsController;", &[])?
+        .l()?;
+    let window_insets_types = env.find_class("android/view/WindowInsets$Type")?;
+    let ime_type = env.call_static_method(&window_insets_types, "ime", "()I", &[])?.i()?;
+    env.call_method(&wic, if show { "show" } else { "hide" }, "(I)V", &[ime_type.into()])?.v()
+}
+
+fn show_hide_keyboard(app: AndroidApp, show: bool) {
+    if let Err(e) = show_hide_keyboard_fallible(app, show) {
+        tracing::error!("Showing or hiding the soft keyboard failed: {e:?}");
+    };
+}
+
 pub(crate) struct Window {
     app: AndroidApp,
     redraw_requester: RedrawRequester,
+    show_keyboard_on_resume: Arc<AtomicBool>,
 }
 
 impl Window {
@@ -779,7 +809,11 @@ impl Window {
     ) -> Result<Self, error::OsError> {
         // FIXME this ignores requested window attributes
 
-        Ok(Self { app: el.app.clone(), redraw_requester: el.redraw_requester.clone() })
+        Ok(Self {
+            app: el.app.clone(),
+            redraw_requester: el.redraw_requester.clone(),
+            show_keyboard_on_resume: el.show_keyboard_on_resume.clone(),
+        })
     }
 
     pub(crate) fn maybe_queue_on_main(&self, f: impl FnOnce(&Self) + Send + 'static) {
@@ -908,7 +942,10 @@ impl Window {
 
     pub fn set_ime_cursor_area(&self, _position: Position, _size: Size) {}
 
-    pub fn set_ime_allowed(&self, _allowed: bool) {}
+    pub fn set_ime_allowed(&self, allowed: bool) {
+        self.show_keyboard_on_resume.store(allowed, Ordering::SeqCst);
+        show_hide_keyboard(self.app.clone(), allowed);
+    }
 
     pub fn set_ime_purpose(&self, _purpose: ImePurpose) {}
 
