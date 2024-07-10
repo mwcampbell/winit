@@ -37,5 +37,3 @@ with it, the migration guide should be added below the entry, like:
 
 The migration guide could reference other migration examples in the current
 changelog entry.
-
-## Unreleased
