@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use android_activity::input::{InputEvent, KeyAction, Keycode, MotionAction};
+use android_activity::input::{InputEvent, KeyAction, Keycode, MotionAction, MotionEvent};
 use android_activity::{
     AndroidApp, AndroidAppWaker, ConfigurationRef, InputStatus, MainEvent, Rect,
 };
@@ -362,6 +362,22 @@ impl<T: 'static> EventLoop<T> {
         self.pending_redraw = pending_redraw;
     }
 
+    fn handle_cursor_moved_event<F>(
+        &self,
+        event: &MotionEvent<'_>,
+        window_id: window::WindowId,
+        device_id: event::DeviceId,
+        callback: &mut F,
+    ) where
+        F: FnMut(event::Event<T>, &RootAEL),
+    {
+        let pointer = event.pointer_at_index(event.pointer_index());
+        let position = PhysicalPosition { x: pointer.x() as _, y: pointer.y() as _ };
+        trace!("Input event {device_id:?}, CursorMoved, pos={position:?}");
+        let event = event::WindowEvent::CursorMoved { device_id, position };
+        callback(event::Event::WindowEvent { window_id, event }, self.window_target());
+    }
+
     fn handle_input_event<F>(
         &mut self,
         android_app: &AndroidApp,
@@ -384,6 +400,39 @@ impl<T: 'static> EventLoop<T> {
                     MotionAction::Up | MotionAction::PointerUp => Some(event::TouchPhase::Ended),
                     MotionAction::Move => Some(event::TouchPhase::Moved),
                     MotionAction::Cancel => Some(event::TouchPhase::Cancelled),
+                    MotionAction::HoverMove => {
+                        self.handle_cursor_moved_event(
+                            motion_event,
+                            window_id,
+                            device_id,
+                            callback,
+                        );
+                        None
+                    },
+                    MotionAction::HoverEnter => {
+                        trace!("Input event {device_id:?}, CursorEntered");
+                        let event = event::WindowEvent::CursorEntered { device_id };
+                        callback(
+                            event::Event::WindowEvent { window_id, event },
+                            self.window_target(),
+                        );
+                        self.handle_cursor_moved_event(
+                            motion_event,
+                            window_id,
+                            device_id,
+                            callback,
+                        );
+                        None
+                    },
+                    MotionAction::HoverExit => {
+                        trace!("Input event {device_id:?}, CursorLeft");
+                        let event = event::WindowEvent::CursorLeft { device_id };
+                        callback(
+                            event::Event::WindowEvent { window_id, event },
+                            self.window_target(),
+                        );
+                        None
+                    },
                     _ => {
                         None // TODO mouse events
                     },
